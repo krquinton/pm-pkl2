@@ -1,0 +1,56 @@
+rules_version = '2';
+// PickleManage - Firestore rules for project pklbox-e01b3
+// Paste into Firebase console -> Firestore Database -> Rules -> Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // The one Google account that is always superadmin
+    function googleSuper() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider == 'google.com'
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'ton.quinton@gmail.com';
+    }
+
+    function profilePath() { return /databases/$(database)/documents/pm-users/$(request.auth.uid); }
+    function hasProfile()  { return signedIn() && exists(profilePath()); }
+    function profile()     { return get(profilePath()).data; }
+
+    // active = true and (no validUntil, or validUntil is still in the future)
+    function licenseOk() {
+      return profile().active == true
+        && (!('validUntil' in profile()) || profile().validUntil == null || request.time < profile().validUntil);
+    }
+
+    function passcodeSuper() { return hasProfile() && licenseOk() && profile().role == 'superadmin'; }
+    function isSuper()       { return googleSuper() || passcodeSuper(); }
+    function licensed()      { return googleSuper() || (hasProfile() && licenseOk()); }
+
+    // ---- accounts / licenses ----
+    match /pm-users/{uid} {
+      allow read:  if signedIn() && (request.auth.uid == uid || isSuper());
+      allow write: if isSuper();
+    }
+
+    // ---- read by the TV display (display.html has no login), written only by licensed users ----
+    match /pkl-queue-buckets/{id} { allow read: if true; allow write: if licensed(); }
+    match /pkl-queue-matches/{id} { allow read: if true; allow write: if licensed(); }
+    match /pkl-queue-session/{id} { allow read: if true; allow write: if licensed(); }
+    match /pkl-queue-events/{id}  { allow read: if true; allow write: if licensed(); }
+
+    // ---- admin only ----
+    match /pkl-queue-participants/{id} {
+      allow read, write: if licensed();
+      // kiosk-old.html adds players without logging in. Uncomment to keep it working (anyone could then add players):
+      // allow create: if true;
+    }
+    match /pkl-queue-logs/{id}      { allow read, write: if licensed(); }
+    match /pkl-queue-stats/{id}     { allow read, write: if licensed(); }
+    match /pkl-queue-sessions/{id}  { allow read, write: if licensed(); }
+    match /pkl-queue-snapshots/{id} { allow read, write: if licensed(); }
+
+    // everything else stays denied
+  }
+}

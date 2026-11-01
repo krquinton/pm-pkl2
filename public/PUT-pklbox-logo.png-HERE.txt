@@ -1,0 +1,2 @@
+Ilagay dito ang pklbox-logo.png (public/pklbox-logo.png). Ginagamit ito ng login page, superadmin, engine at TV display.
+Puwedeng burahin ang text file na ito pagkatapos.
