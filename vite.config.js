@@ -1,44 +1,63 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import JavaScriptObfuscator from 'javascript-obfuscator';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /* Obfuscates ONLY our own code (src/**). Library chunks (react, firebase, jspdf, html2canvas) are left alone:
    they are public code anyway and obfuscating them just makes the site slower.
+   It runs AFTER Vite has written the bundle (closeBundle), so Vite has already replaced its internal chunk-name
+   placeholders. Obfuscating earlier encodes those placeholders and breaks the lazy-loaded pages (404 on !~{005}~.js).
    Turn it off for debugging with:  npm run build:plain   (OBFUSCATE=0) */
 function obfuscateOwnCode(){
+  let outDir = 'dist', root = process.cwd();
+  const ownFiles = [];
   return {
     name: 'pm-obfuscate-own-code',
     apply: 'build',
     enforce: 'post',
-    renderChunk(code, chunk){
-      if (process.env.OBFUSCATE === '0') return null;
-      const own = chunk.moduleIds.length > 0 && chunk.moduleIds.every(id => !id.includes('node_modules') && !id.includes('vite/preload-helper') && !id.includes('commonjsHelpers'));
-      if (!own) return null;
-      const out = JavaScriptObfuscator.obfuscate(code, {
-        target: 'browser',
-        sourceType: 'module',
-        compact: true,
-        identifierNamesGenerator: 'hexadecimal',
-        renameGlobals: false,            // window['fn'] handlers and Firestore field names must keep their names
-        renameProperties: false,
-        transformObjectKeys: false,
-        stringArray: true,
-        stringArrayThreshold: 0.8,
-        stringArrayEncoding: ['base64'],
-        stringArrayRotate: true,
-        stringArrayShuffle: true,
-        stringArrayWrappersCount: 2,
-        stringArrayWrappersType: 'function',
-        splitStrings: false,             // the engine markup is a very large string
-        controlFlowFlattening: false,    // too slow for a live queue screen
-        deadCodeInjection: false,
-        selfDefending: false,
-        debugProtection: false,
-        disableConsoleOutput: false,
-        unicodeEscapeSequence: false,
-        sourceMap: false
-      });
-      return { code: out.getObfuscatedCode(), map: null };
+    configResolved(cfg){ outDir = path.resolve(cfg.root, cfg.build.outDir); root = cfg.root; },
+    generateBundle(_, bundle){
+      ownFiles.length = 0;
+      for (const [file, item] of Object.entries(bundle)) {
+        if (item.type !== 'chunk') continue;
+        const own = item.moduleIds.length > 0 && item.moduleIds.every(id => !id.includes('node_modules') && !id.includes('vite/preload-helper') && !id.includes('commonjsHelpers'));
+        if (own) ownFiles.push(file);
+      }
+    },
+    closeBundle(){
+      if (process.env.OBFUSCATE === '0') return;
+      for (const file of ownFiles) {
+        const full = path.join(outDir, file);
+        if (!fs.existsSync(full)) continue;
+        const code = fs.readFileSync(full, 'utf8');
+        const out = JavaScriptObfuscator.obfuscate(code, {
+          target: 'browser',
+          sourceType: 'module',
+          compact: true,
+          identifierNamesGenerator: 'hexadecimal',
+          renameGlobals: false,            // window['fn'] handlers, exports and Firestore field names must keep their names
+          renameProperties: false,
+          transformObjectKeys: false,
+          stringArray: true,
+          stringArrayThreshold: 0.8,
+          stringArrayEncoding: ['base64'],
+          stringArrayRotate: true,
+          stringArrayShuffle: true,
+          stringArrayWrappersCount: 2,
+          stringArrayWrappersType: 'function',
+          splitStrings: false,             // the engine markup is a very large string
+          controlFlowFlattening: false,    // too slow for a live queue screen
+          deadCodeInjection: false,
+          selfDefending: false,
+          debugProtection: false,
+          disableConsoleOutput: false,
+          unicodeEscapeSequence: false,
+          sourceMap: false
+        });
+        fs.writeFileSync(full, out.getObfuscatedCode());
+        console.log('obfuscated', file);
+      }
     }
   };
 }

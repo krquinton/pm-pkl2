@@ -122,7 +122,7 @@ function Dashboard({ ctx }){
   return (
     <>
       <header className="top">
-        <img src="/pklbox-logo.png" alt="PKL Box" />
+        <img src="/pklbox-logo.png" alt="PKL Box" onError={e => { e.currentTarget.style.display = "none"; }} />
         <div><h1>PickleManage</h1><div className="sub">Superadmin · accounts &amp; licenses</div></div>
         <div className="top-actions">
           <span className="who">👤 {who}</span>

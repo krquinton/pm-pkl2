@@ -89,7 +89,7 @@ export default function Login(){
           <line x1="300" y1="610" x2="300" y2="850" />
         </svg>
         <div>
-          <div className="logo-card"><img src="/pklbox-logo.png" alt="PKL Box" /></div>
+          <div className="logo-card"><img src="/pklbox-logo.png" alt="PKL Box" onError={e => { e.currentTarget.style.display = "none"; }} /></div>
           <h1 className="display">Ready to<br />play?</h1>
           <p className="lead">Run your events and tournaments like a pro. Queue matches, rotate courts and track every score, all in one place.</p>
           <div className="tag"><i></i>Play More, Manage Less</div>
@@ -99,7 +99,7 @@ export default function Login(){
 
       <section className="panel">
         <div className="form">
-          <div className="wordmark"><img src="/pklbox-logo.png" alt="" /><span>Pickle<b>Manage</b>OS</span></div>
+          <div className="wordmark"><img src="/pklbox-logo.png" alt="" onError={e => { e.currentTarget.style.display = "none"; }} /><span>Pickle<b>Manage</b>OS</span></div>
           <h2>Welcome back!</h2>
           <p className="sub">Accounts are created and activated by your administrator. Don’t have one yet? Reach out to get set up.</p>
 
