@@ -42,5 +42,13 @@ npm run build:plain  # parehong build pero WALANG obfuscation (para sa debugging
 - Ang tunay na proteksyon ay nasa **Firestore rules** at sa **license check**, at nasa Spark plan ito (walang server code). Ang `firebaseConfig` ay public by design.
 - Kung gusto mo ng mas mabigat na obfuscation (control-flow flattening), baguhin ang options sa `vite.config.js`; babagal ang app, lalo na ang queue screen.
 
-## Phase 2b (susunod, kung gusto)
+## Phase 2b: status
+Naka-React na: **Leaderboard** at **Logs** tabs (`src/engine/components`), kasama ang pure logic (`src/engine/logic`) at ang `bridge` na nagpapasa ng live Firestore data mula sa legacy engine papunta sa React (para walang doble na reads). Ang export/DUPR-settings/edit/delete sa Logs ay tumatawag pa sa legacy engine.
+
+```
+npm test   # differential test (bagong logic vs luma), React component tests, at full-engine smoke test na may fake Firebase
+```
+
+## Susunod na hakbang
+
 Ang engine at display ay naka-module na pero hindi pa hinahati sa React components. Ang plano: ilipat isa-isa (Participants, Match Suggestions, Queue & Courts, Leaderboard, Logs) habang tumatakbo pa rin ang app.

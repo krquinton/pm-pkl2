@@ -3,3 +3,5 @@ dist
 .env
 .vercel
 .netlify
+.tmp-test
+.tmp-smoke

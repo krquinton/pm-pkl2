@@ -16,6 +16,7 @@ const Host = memo(function Host({ ctx }){
       window.html2canvas = h2c.default || h2c;
       fb.enableOffline();
       eng.startEngine(ctx);
+      (await import('../engine/panels.jsx')).mountPanels();   // React-owned tabs
     })();
   }, []);
   return <div className="legacy-host" dangerouslySetInnerHTML={{ __html: markup }} />;

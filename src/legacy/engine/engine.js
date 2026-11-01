@@ -1,4 +1,5 @@
 import firebase from '../../firebase.js';
+import { bridge } from '../../engine/bridge.js';   // feeds the React tabs (Leaderboard, Logs)
 
 /* Legacy queue / DUPR engine, moved as-is into a module. Started once by pages/Engine.jsx after the markup is mounted. */
 export function startEngine(ctx){
@@ -166,6 +167,7 @@ db.collection('pkl-queue-buckets').onSnapshot(snap => {
       pools: Array.isArray(x.pools) ? x.pools.filter(q => q && q.id).map(q => ({ id:String(q.id), name:String(q.name || 'Pool') })) : [] };
   }).sort((a,b) => a.order - b.order || a.createdAtMs - b.createdAtMs);
   bucketsLoaded = true;
+  bridge.set('buckets', BUCKETS);
   Object.keys(suggestionState).forEach(k => { if (!BUCKETS.some(b => b.key === k)) delete suggestionState[k]; });
   renderParticipants();
   renderMatchupBuckets();
@@ -196,6 +198,7 @@ db.collection('pkl-queue-matches').onSnapshot(snap => {
 
 db.collection('pkl-queue-logs').orderBy('completedAt','desc').limit(2000).onSnapshot(snap => {
   logs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+  bridge.set('logs', logs);
   renderLogs();
   renderLeaderboard();
   refreshGenList();
@@ -206,11 +209,13 @@ db.collection('pkl-queue-stats').onSnapshot(snap => { statsCache = {}; snap.docs
 
 db.collection('pkl-queue-sessions').orderBy('createdAt','desc').onSnapshot(snap => {
   sessionsList = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+  bridge.set('sessions', sessionsList);
   renderSessionFilterOptions();
 }, err => showToast('Sessions sync error: ' + err.message, true));
 
 db.collection('pkl-queue-session').doc('state').onSnapshot(doc => {
   sessionState = doc.exists ? doc.data() : {};
+  bridge.set('session', sessionState);
   const cc = Number(sessionState.courtCount);
   const newCourts = (cc >= 1 && cc <= MAX_COURTS) ? Math.floor(cc) : 4;
   const courtsChanged = newCourts !== COURTS;
@@ -2522,46 +2527,10 @@ document.getElementById('btnEndConfirm').addEventListener('click', async () => {
 /* ================= LOGS ================= */
 function renderSessionFilterOptions(){
   updateExportTargetLabel();
-  const lb = document.getElementById('lbSessionFilter');
-  if (lb) { const lcur = lb.value; lb.innerHTML = `<option value="">Current session</option>` + sessionsList.map(x => `<option value="${x.id}">${escapeHtml(x.name)} · ${x.date}</option>`).join(''); lb.value = lcur; }
 }
-function renderLogBucketFilter(){
-  const sel = document.getElementById('logBucketFilter');
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = `<option value="">All categories</option>` + BUCKETS.map(b => `<option value="${b.key}">${escapeHtml(b.label)}</option>`).join('');
-  sel.value = BUCKETS.some(b => b.key === cur) ? cur : '';
-}
-['logBucketFilter','logSearch'].forEach(id => document.getElementById(id).addEventListener('input', renderLogs));
-function renderLogs(){
-  const sid = sessionState.currentSessionId || null;
-  const sessLogs = logs.filter(l => (l.sessionId || null) === sid);
-  const bucketSel = document.getElementById('logBucketFilter').value;
-  const q = document.getElementById('logSearch').value.trim().toLowerCase();
-  const filtered = sessLogs.filter(l => {
-    if (bucketSel && l.bucket !== bucketSel) return false;
-    if (q && ![...(l.team1 || []), ...(l.team2 || [])].some(p => (p.name || '').toLowerCase().includes(q))) return false;
-    return true;
-  });
-  document.getElementById('logsCount').textContent = `${filtered.length} match${filtered.length===1?'':'es'}` + (filtered.length !== sessLogs.length ? ` (of ${sessLogs.length})` : '');
-  document.getElementById('logsSessionLabel').textContent = sessionState.currentSessionName ? ` · ${sessionState.currentSessionName}` : '';
-  const body = document.getElementById('logsBody');
-  if (!filtered.length) { body.innerHTML = `<tr class="empty-row"><td colspan="9">${sessLogs.length ? 'No matches found.' : 'No matches logged yet.'}</td></tr>`; return; }
-  body.innerHTML = filtered.map(l => {
-    const t1 = l.team1.map(p=>p.name).join(' & '), t2 = l.team2.map(p=>p.name).join(' & ');
-    const winnerName = l.winner === 'team1' ? t1 : t2;
-    const mins = Math.floor((l.durationSeconds||0)/60), secs = (l.durationSeconds||0)%60;
-    return `<tr>
-      <td>${l.matchId}</td><td>${escapeHtml(logBucketName(l))}${l.poolName ? ` <span class="pool-tag">${escapeHtml(l.poolName)}</span>` : ''}</td><td>${escapeHtml(t1)}</td><td>${escapeHtml(t2)}</td>
-      <td>${l.score1} – ${l.score2}</td><td>${escapeHtml(winnerName)}</td><td>Court ${l.court}</td>
-      <td>${mins}m ${secs}s</td>
-      <td><div class="row-actions">
-        <button class="btn-icon" title="Edit result" onclick="openLogEditModal('${l.id}')">✎</button>
-        <button class="btn-icon danger" title="Delete" onclick="deleteLog('${l.id}')">🗑</button>
-      </div></td>
-    </tr>`;
-  }).join('');
-}
+/* The Logs and Leaderboard tabs are React now (src/engine/components). These stay as no-ops because other code still calls them. */
+function renderLogBucketFilter(){}
+function renderLogs(){}
 const logEditOverlay = document.getElementById('logEditOverlay');
 let logEditId = null, logEditNames = {t1:'Team 1', t2:'Team 2'};
 function openLogEditModal(logId){
@@ -3128,44 +3097,7 @@ function lbBuckets(sessionId){
   });
   return list;
 }
-var lbView = 'pool';
-let lbSessionSel = '';
-function renderLeaderboard(){
-  const grid = document.getElementById('lbGrid');
-  if (!grid) return;
-  const sid = lbSessionSel || sessionState.currentSessionId;
-  const anyPools = BUCKETS.some(b => bucketHasPools(b.key));
-  const tg = document.getElementById('lbViewToggle');
-  if (tg) { tg.style.display = anyPools ? '' : 'none'; tg.querySelectorAll('button').forEach(bt => bt.classList.toggle('on', bt.dataset.v === lbView)); }
-  const byPool = anyPools && lbView === 'pool';
-  const data = buildLeaderboard(sid, byPool);
-  const medals = ['🥇','🥈','🥉'];
-  const lbList = lbBuckets(sid);
-  if (!lbList.length) { grid.innerHTML = `<div class="bucket-card" style="grid-column:1/-1;"><div style="padding:28px 20px;text-align:center;color:var(--muted);">No categories yet.</div></div>`; return; }
-  grid.innerHTML = lbList.flatMap(b => {
-    const groups = byPool && bucketHasPools(b.key)
-      ? [...bucketPools(b.key).map(q => ({ suffix: q.name, rows: data[b.key + '|' + q.id] || [] })), ...((data[b.key + '|'] || []).length ? [{ suffix:'No pool', rows: data[b.key + '|'] }] : [])]
-      : [{ suffix:'', rows: data[b.key] || [] }];
-    return groups.map(g => {
-    const rows = g.rows;
-    const body = rows.length ? rows.map(e => `
-      <tr><td class="rank">${e.rank}</td>
-        <td class="lb-name">${e.rank <= 3 ? medals[e.rank-1] + ' ' : ''}${escapeHtml(e.name)}</td>
-        <td class="num">${e.gp}</td><td class="num">${e.w}</td><td class="num">${e.l}</td><td class="num">${e.pf}</td>
-        <td class="num ${e.pd > 0 ? 'lb-pos' : (e.pd < 0 ? 'lb-neg' : '')}">${e.pd > 0 ? '+' : ''}${e.pd}</td></tr>`).join('')
-      : `<tr class="empty-row"><td colspan="7">No completed matches yet.</td></tr>`;
-    return `
-    <div class="bucket-card">
-      <div class="bucket-head"><h3><span class="bucket-tag" style="background:${b.color}"></span>${escapeHtml(b.label)}${modeTagHtml(b)}${g.suffix ? `<span class="pool-tag">${escapeHtml(g.suffix)}</span>` : ''}</h3>
-        <span class="count">${rows.length} ${b.mode === 'fixed' ? 'pair' : (b.mode === 'team' ? 'team' : 'player')}${rows.length===1?'':'s'}</span></div>
-      <table class="lb-table"><thead><tr><th class="num">#</th><th>${b.mode === 'fixed' ? 'Pair' : (b.mode === 'team' ? 'Team' : 'Player')}</th><th class="num">GP</th><th class="num">W</th><th class="num">L</th><th class="num">Pts</th><th class="num">+/−</th></tr></thead>
-      <tbody>${body}</tbody></table>
-    </div>`;
-    });
-  }).join('');
-}
-document.getElementById('lbSessionFilter').addEventListener('change', e => { lbSessionSel = e.target.value; renderLeaderboard(); });
-document.querySelectorAll('#lbViewToggle button').forEach(bt => bt.addEventListener('click', () => { lbView = bt.dataset.v; renderLeaderboard(); }));
+function renderLeaderboard(){}
 
 /* ================= DUPR CSV EXPORT ================= */
 const DUPR_HEADERS = ['matchType','event','date','playerA1','playerA1DuprId','playerA1ExternalId','playerA2','playerA2DuprId','playerA2ExternalId','playerB1','playerB1DuprId','playerB1ExternalId','playerB2','playerB2DuprId','playerB2ExternalId','teamAGame1','teamBGame1','teamAGame2','teamBGame2','teamAGame3','teamBGame3','teamAGame4','teamBGame4','teamAGame5','teamBGame5','location','scoreType'];
